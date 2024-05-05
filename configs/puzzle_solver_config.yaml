@@ -1,0 +1,58 @@
+pairwise: False
+algorithms:
+  min_puzzle_piece_size_in_pixels: 7000
+  puzzle_piece_segmentation:
+    # The kernel size of the Gaussian blur before using Otsu's method
+    blurring_kernel_size: 7
+    # The size of margin added to the mask, so that the border is always background
+    margin_size: 10
+  min_contour_length: 100
+  feature_extraction:
+    # The curvatures and normal vectors are computed by fitting a circle using the points within the windows.
+    curvature_window_radii: [ 10.0, 20.0, 50.0, 100.0 ]
+    curvature_gaussian_smoothing_sigma: 5.0
+    normal_vector_window_radius: 10.0
+    # The curvature at feature points must be the maximum inside the window
+    maximum_filter_window_size: 7
+    median_filter_window_size: 51
+    # The curvature at feature points must be salient (more than salience_ratio times of the median of a neighborhood within median_filter_window_size)
+    salience_ratio: 1.2
+    # Feature shouldn't be on low curvature region, e.g., a straight line
+    minimum_curvature: 0.02
+    insideness_testing_stride: 5.0
+  pairwise_matching:
+    max_matching_feature_distance: 0.5
+    # After the transformation, the source and target masks should have a small overlap
+    max_overlap_score: 0.1
+    # Contour points within this number of pixels are considered to match
+    max_matching_contour_point_distance: 20.0
+    # A transform will be deemed invalid if less than this number of contour points match after the transformation
+    min_matching_percentage: 20.0
+    # The number of feature point pairs to try before determine a result
+    max_num_trials: 100
+  icp_pose_refinement:
+    max_num_iters: 10
+    max_matching_radius: 20.0
+    rtol_in_degrees: 0.1
+    ttol_in_pixels: 0.1
+  # Configs for minimizing the overlap between the two matched puzzle pieces
+  minimize_overlap:
+    max_num_iters: 10
+    step_size: 1.0
+    # Exit when the average overlap is below this threshold.
+    exit_threshold: 0.1
+  matching_result_validation:
+    # The maximum allowed overlap depth between two puzzle pieces
+    error_allowance_in_pixels: 3
+    # The maximum gap length between two matching puzzle pieces due to manufacturing_error
+    manufacturing_error_length_in_pixels: 12.0
+    min_matching_percentage: 20.0
+
+outputs:
+  puzzle_piece_mask_visualization: True
+  matching_result_visualization: True
+  contour_visualization: True
+  feature_points: True
+  pairwise_matching_results: True
+  contour_graph: True
+  incremental_matching_intermediate_results: True
