@@ -48,11 +48,12 @@ def calculate_contour_distance(
             max_consecutive_length, num_pixels[first_label] + num_pixels[last_label]
         )
 
-    assertions.assert_flat_array(indices, int)
+    if indices.size > 0:
+        assertions.assert_flat_array(indices, int)
     num_query_points = len(distances)
     return (
         100 * len(indices) / num_query_points,
-        np.mean(distances[indices]).item(),
+        np.mean(distances[indices]).item() if indices.size > 0 else np.inf,
         indices,
         100 * max_consecutive_length / num_query_points,
     )

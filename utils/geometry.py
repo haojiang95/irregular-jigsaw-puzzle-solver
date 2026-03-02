@@ -24,7 +24,7 @@ def nearest_neighbors(
     assert max_radius > 0
 
     distances, indices = pykdtree.kdtree.KDTree(target_points.copy()).query(
-        query_points.copy(), distance_upper_bound=max_radius
+        query_points.copy(), k=num_neighbors, distance_upper_bound=max_radius
     )
 
     if num_neighbors == 1:

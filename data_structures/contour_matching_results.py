@@ -52,7 +52,7 @@ class ContourMatchingResults:
     def inverse(self) -> "ContourMatchingResults":
         return ContourMatchingResults(
             self.init_matching_results.inverse(),
-            self.icp_refined_transform.inverse(),
+            self.icp_refined_transform.inverse,
             self.refined_matching_result.inverse(),
             self.valid,
             self.target_contour_index,
