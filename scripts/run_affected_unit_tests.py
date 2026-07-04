@@ -16,15 +16,42 @@ FULL_SUITE_TRIGGER_PATHS = {
 }
 
 PREFIX_TO_TESTS = (
-    ("algorithms/", ("unit_tests/test_algorithms.py",)),
-    ("data_structures/", ("unit_tests/test_data_structures.py",)),
-    ("utils/", ("unit_tests/test_utils.py",)),
+    (
+        "algorithms/",
+        (
+            "unit_tests/test_algorithms.py",
+            "unit_tests/test_puzzle_solver_app_regression.py",
+        ),
+    ),
+    (
+        "applications/",
+        ("unit_tests/test_puzzle_solver_app_regression.py",),
+    ),
+    (
+        "data_structures/",
+        (
+            "unit_tests/test_data_structures.py",
+            "unit_tests/test_puzzle_solver_app_regression.py",
+        ),
+    ),
+    ("demo_dataset/", ("unit_tests/test_puzzle_solver_app_regression.py",)),
+    (
+        "utils/",
+        ("unit_tests/test_utils.py", "unit_tests/test_puzzle_solver_app_regression.py"),
+    ),
 )
 
 EXACT_PATH_TO_TESTS = {
+    "configs/puzzle_solver_config.yaml": (
+        "unit_tests/test_puzzle_solver_app_regression.py",
+    ),
     "cython_libs.pyx": (
         "unit_tests/test_find_neighbors_within_radius.py",
         "unit_tests/test_algorithms.py",
+        "unit_tests/test_puzzle_solver_app_regression.py",
+    ),
+    "scripts/run_puzzle_solver.py": (
+        "unit_tests/test_puzzle_solver_app_regression.py",
     ),
     "visualizations.py": ("unit_tests/test_visualizations.py",),
 }
@@ -33,6 +60,7 @@ TEST_ORDER = (
     "unit_tests/test_algorithms.py",
     "unit_tests/test_data_structures.py",
     "unit_tests/test_find_neighbors_within_radius.py",
+    "unit_tests/test_puzzle_solver_app_regression.py",
     "unit_tests/test_utils.py",
     "unit_tests/test_visualizations.py",
 )
@@ -100,7 +128,11 @@ def run_selection(selection: TestSelection) -> int:
         return 0
 
     env = os.environ.copy()
-    env.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "mplconfig"))
+    temp_dir = Path(tempfile.gettempdir())
+    env.setdefault("MPLCONFIGDIR", str(temp_dir / "mplconfig"))
+    env.setdefault("XDG_CACHE_HOME", str(temp_dir / "xdg-cache"))
+    Path(env["MPLCONFIGDIR"]).mkdir(parents=True, exist_ok=True)
+    Path(env["XDG_CACHE_HOME"]).mkdir(parents=True, exist_ok=True)
     command = unittest_command(selection)
     if selection.run_full_suite:
         print("Running full unit test suite.", flush=True)

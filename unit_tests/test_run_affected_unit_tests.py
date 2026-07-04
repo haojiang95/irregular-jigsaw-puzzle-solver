@@ -20,9 +20,18 @@ class TestRunAffectedUnitTests(unittest.TestCase):
             (
                 "unit_tests/test_algorithms.py",
                 "unit_tests/test_data_structures.py",
+                "unit_tests/test_puzzle_solver_app_regression.py",
                 "unit_tests/test_utils.py",
                 "unit_tests/test_visualizations.py",
             ),
+        )
+
+    def test_application_change_runs_regression_test(self):
+        selection = select_affected_unit_tests(["applications/puzzle_solver_app.py"])
+
+        self.assertFalse(selection.run_full_suite)
+        self.assertEqual(
+            selection.test_paths, ("unit_tests/test_puzzle_solver_app_regression.py",)
         )
 
     def test_multiple_changed_files_dedupe_test_paths(self):
@@ -40,6 +49,7 @@ class TestRunAffectedUnitTests(unittest.TestCase):
             (
                 "unit_tests/test_algorithms.py",
                 "unit_tests/test_find_neighbors_within_radius.py",
+                "unit_tests/test_puzzle_solver_app_regression.py",
             ),
         )
 
