@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 import numpy.typing as npt
+from pathlib import Path
 import utils.assertions as assertions
 from skimage.transform import EuclideanTransform
 from data_structures.puzzle_piece import PuzzlePiece
@@ -14,6 +15,8 @@ GREEN = (0, 255, 0)
 BLUE = (255, 0, 0)
 YELLOW = (0, 255, 255)
 MAGENTA = (255, 0, 255)
+POSE_FOREST_EDGE_COLOR = "#697487"
+POSE_FOREST_HIGHLIGHT_EDGE_COLOR = "#d62728"
 
 
 def overlay_mask(
@@ -167,7 +170,9 @@ def draw_feature_points(
 
 
 def visualize_matching_results(
-    puzzle_pieces: list[PuzzlePiece], pose_tree: nx.DiGraph
+    puzzle_pieces: list[PuzzlePiece],
+    pose_tree: nx.DiGraph,
+    piece_colors: dict[int, tuple[int, int, int]] | None = None,
 ) -> npt.NDArray[np.uint8]:
     """
     Visualizes the matching results of assembling puzzle pieces based on a pose tree.
@@ -230,6 +235,11 @@ def visualize_matching_results(
     for puzzle_piece_index, transform in puzzle_piece_indices_and_poses:
         transform_matrix = transform.params[:2].copy()
         transform_matrix[:, 2] -= transform_offset
+        color = (
+            piece_colors[puzzle_piece_index]
+            if piece_colors is not None and puzzle_piece_index in piece_colors
+            else utils.misc.random_color(0.2)
+        )
         canvas[
             cv2.warpAffine(
                 puzzle_pieces[puzzle_piece_index].mask.astype(np.uint8),
@@ -237,7 +247,302 @@ def visualize_matching_results(
                 canvas_size,
                 flags=cv2.INTER_NEAREST,
             ).astype(bool)
-        ] = utils.misc.random_color(0.2)
+        ] = color
+
+    assertions.assert_color_image(canvas)
+    return canvas
+
+
+def stable_puzzle_piece_colors(
+    num_puzzle_pieces: int,
+) -> dict[int, tuple[int, int, int]]:
+    assert num_puzzle_pieces > 0
+
+    result = {}
+    golden_ratio_conjugate = 0.61803398875
+    for puzzle_piece_index in range(num_puzzle_pieces):
+        hue = (puzzle_piece_index * golden_ratio_conjugate) % 1.0
+        hsv = np.array([[[hue * 179, 155, 230]]], dtype=np.uint8)
+        bgr = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)[0, 0]
+        result[puzzle_piece_index] = (
+            int(bgr[0]),
+            int(bgr[1]),
+            int(bgr[2]),
+        )
+    return result
+
+
+def visualize_matching_result_forest(
+    puzzle_pieces: list[PuzzlePiece],
+    pose_forest: nx.DiGraph,
+    include_singletons: bool = False,
+) -> npt.NDArray[np.uint8]:
+    assert nx.is_forest(pose_forest)
+
+    piece_colors = stable_puzzle_piece_colors(len(puzzle_pieces))
+    components = [
+        tuple(sorted(component))
+        for component in nx.weakly_connected_components(pose_forest)
+        if include_singletons or len(component) > 1
+    ]
+    components.sort(key=lambda component: component[0])
+
+    labeled_images = []
+    for component in components:
+        pose_tree = nx.DiGraph(pose_forest.subgraph(component).copy())
+        label = f"Component: {', '.join(str(piece_id) for piece_id in component)}"
+        labeled_images.append(
+            (
+                label,
+                visualize_matching_results(puzzle_pieces, pose_tree, piece_colors),
+            )
+        )
+    if not labeled_images:
+        labeled_images.append(("No matched components", _blank_image(320, 120)))
+    return _compose_labeled_images(labeled_images, max_columns=2)
+
+
+def visualize_incremental_matching_change(
+    puzzle_pieces: list[PuzzlePiece],
+    pose_forest_before: nx.DiGraph,
+    pose_forest_after: nx.DiGraph,
+    source_component_before: tuple[int, ...],
+    target_component_before: tuple[int, ...],
+    merged_component: tuple[int, ...],
+) -> npt.NDArray[np.uint8]:
+    assert nx.is_forest(pose_forest_before)
+    assert nx.is_forest(pose_forest_after)
+
+    piece_colors = stable_puzzle_piece_colors(len(puzzle_pieces))
+    source_tree = nx.DiGraph(
+        pose_forest_before.subgraph(source_component_before).copy()
+    )
+    target_tree = nx.DiGraph(
+        pose_forest_before.subgraph(target_component_before).copy()
+    )
+    merged_tree = nx.DiGraph(pose_forest_after.subgraph(merged_component).copy())
+
+    return _compose_labeled_images(
+        [
+            (
+                f"Before: {', '.join(str(piece_id) for piece_id in source_component_before)}",
+                visualize_matching_results(puzzle_pieces, source_tree, piece_colors),
+            ),
+            (
+                f"Before: {', '.join(str(piece_id) for piece_id in target_component_before)}",
+                visualize_matching_results(puzzle_pieces, target_tree, piece_colors),
+            ),
+            (
+                f"After: {', '.join(str(piece_id) for piece_id in merged_component)}",
+                visualize_matching_results(puzzle_pieces, merged_tree, piece_colors),
+            ),
+        ],
+        max_columns=2,
+    )
+
+
+def pose_forest_edge_styles(
+    pose_forest: nx.Graph, highlighted_edge: tuple[int, int] | None = None
+) -> tuple[list[str], list[float]]:
+    edge_colors = []
+    edge_widths = []
+    for edge in pose_forest.edges:
+        highlighted = highlighted_edge is not None and edge == highlighted_edge
+        edge_colors.append(
+            POSE_FOREST_HIGHLIGHT_EDGE_COLOR if highlighted else POSE_FOREST_EDGE_COLOR
+        )
+        edge_widths.append(3.0 if highlighted else 1.4)
+    return edge_colors, edge_widths
+
+
+def save_pose_forest_visualization(
+    pose_forest: nx.DiGraph,
+    output_path: Path,
+    highlighted_edge: tuple[int, int] | None = None,
+) -> None:
+    assert nx.is_forest(pose_forest)
+    save_graph_visualization(pose_forest, output_path, highlighted_edge)
+
+
+def save_graph_visualization(
+    graph: nx.Graph,
+    output_path: Path,
+    highlighted_edge: tuple[int, int] | None = None,
+) -> None:
+    result = cv2.imwrite(
+        str(output_path),
+        visualize_graph(graph, highlighted_edge),
+    )
+    assert result
+
+
+def visualize_pose_forest(
+    pose_forest: nx.DiGraph,
+    highlighted_edge: tuple[int, int] | None = None,
+) -> npt.NDArray[np.uint8]:
+    assert nx.is_forest(pose_forest)
+    return visualize_graph(pose_forest, highlighted_edge)
+
+
+def visualize_graph(
+    graph: nx.Graph,
+    highlighted_edge: tuple[int, int] | None = None,
+) -> npt.NDArray[np.uint8]:
+    width = max(640, min(1600, graph.number_of_nodes() * 85))
+    height = max(360, min(1200, graph.number_of_nodes() * 60))
+    canvas = np.full((height, width, 3), 245, dtype=np.uint8)
+    if graph.number_of_nodes() == 0:
+        return canvas
+
+    positions = nx.spring_layout(graph.to_undirected(), seed=1234)
+    points = _layout_points_to_canvas_positions(positions, width, height)
+    edge_colors, edge_widths = pose_forest_edge_styles(graph, highlighted_edge)
+
+    for edge, edge_color, edge_width in zip(graph.edges, edge_colors, edge_widths):
+        source, target = edge
+        color = _hex_to_bgr(edge_color)
+        if graph.is_directed():
+            cv2.arrowedLine(
+                canvas,
+                points[source],
+                points[target],
+                color,
+                thickness=int(edge_width),
+                tipLength=0.08,
+                line_type=cv2.LINE_AA,
+            )
+        else:
+            cv2.line(
+                canvas,
+                points[source],
+                points[target],
+                color,
+                thickness=int(edge_width),
+                lineType=cv2.LINE_AA,
+            )
+
+    for node in sorted(graph.nodes):
+        point = points[node]
+        cv2.circle(canvas, point, 22, (251, 247, 244), thickness=cv2.FILLED)
+        cv2.circle(canvas, point, 22, (85, 65, 51), thickness=2)
+        label = str(node)
+        text_size, baseline = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.58, 2)
+        text_x = point[0] - text_size[0] // 2
+        text_y = point[1] + (text_size[1] - baseline) // 2
+        cv2.putText(
+            canvas,
+            label,
+            (text_x, text_y),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.58,
+            (42, 32, 15),
+            2,
+            cv2.LINE_AA,
+        )
+
+    assertions.assert_color_image(canvas)
+    return canvas
+
+
+def _layout_points_to_canvas_positions(
+    positions: dict[int, npt.NDArray[np.float64]], width: int, height: int
+) -> dict[int, tuple[int, int]]:
+    margin = 52
+    position_values = np.array(list(positions.values()), dtype=float)
+    min_position = position_values.min(axis=0)
+    max_position = position_values.max(axis=0)
+    span = max_position - min_position
+    span[span == 0] = 1.0
+
+    result = {}
+    for node, position in positions.items():
+        normalized_position = (position - min_position) / span
+        x = margin + normalized_position[0] * (width - margin * 2)
+        y = margin + normalized_position[1] * (height - margin * 2)
+        result[node] = (int(round(x)), int(round(y)))
+    return result
+
+
+def _hex_to_bgr(hex_color: str) -> tuple[int, int, int]:
+    assert len(hex_color) == 7
+    assert hex_color[0] == "#"
+    red = int(hex_color[1:3], 16)
+    green = int(hex_color[3:5], 16)
+    blue = int(hex_color[5:7], 16)
+    return blue, green, red
+
+
+def _blank_image(width: int, height: int) -> npt.NDArray[np.uint8]:
+    assert width > 0
+    assert height > 0
+    return np.full((height, width, 3), 18, dtype=np.uint8)
+
+
+def _labeled_panel(label: str, image: npt.NDArray[np.uint8]) -> npt.NDArray[np.uint8]:
+    assertions.assert_color_image(image)
+
+    padding = 14
+    header_height = 32
+    panel_width = max(image.shape[1] + padding * 2, 260)
+    panel_height = image.shape[0] + padding * 2 + header_height
+    panel = np.full((panel_height, panel_width, 3), 18, dtype=np.uint8)
+    cv2.putText(
+        panel,
+        label,
+        (padding, 22),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.55,
+        (235, 241, 245),
+        1,
+        cv2.LINE_AA,
+    )
+    image_x = (panel_width - image.shape[1]) // 2
+    image_y = header_height + padding
+    panel[image_y : image_y + image.shape[0], image_x : image_x + image.shape[1]] = (
+        image
+    )
+    return panel
+
+
+def _compose_labeled_images(
+    labeled_images: list[tuple[str, npt.NDArray[np.uint8]]], max_columns: int
+) -> npt.NDArray[np.uint8]:
+    assert len(labeled_images) > 0
+    assert max_columns > 0
+
+    panels = [_labeled_panel(label, image) for label, image in labeled_images]
+    gap = 16
+    columns = min(max_columns, len(panels))
+    rows = [panels[index : index + columns] for index in range(0, len(panels), columns)]
+
+    row_images = []
+    for row in rows:
+        row_height = max(panel.shape[0] for panel in row)
+        row_width = sum(panel.shape[1] for panel in row) + gap * (len(row) - 1)
+        row_image = np.full((row_height, row_width, 3), 10, dtype=np.uint8)
+        x_offset = 0
+        for panel in row:
+            y_offset = (row_height - panel.shape[0]) // 2
+            row_image[
+                y_offset : y_offset + panel.shape[0],
+                x_offset : x_offset + panel.shape[1],
+            ] = panel
+            x_offset += panel.shape[1] + gap
+        row_images.append(row_image)
+
+    canvas_width = max(row.shape[1] for row in row_images)
+    canvas_height = sum(row.shape[0] for row in row_images) + gap * (
+        len(row_images) - 1
+    )
+    canvas = np.full((canvas_height, canvas_width, 3), 10, dtype=np.uint8)
+    y_offset = 0
+    for row_image in row_images:
+        x_offset = (canvas_width - row_image.shape[1]) // 2
+        canvas[
+            y_offset : y_offset + row_image.shape[0],
+            x_offset : x_offset + row_image.shape[1],
+        ] = row_image
+        y_offset += row_image.shape[0] + gap
 
     assertions.assert_color_image(canvas)
     return canvas

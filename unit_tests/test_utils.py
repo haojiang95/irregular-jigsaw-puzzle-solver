@@ -1,3 +1,4 @@
+import json
 import os
 import random
 import tempfile
@@ -16,6 +17,7 @@ import utils.graph_utils as graph_utils
 import utils.image_operations as image_operations
 import utils.misc as misc
 import utils.profiling_tools as profiling_tools
+import utils.incremental_matching_debug as incremental_matching_debug
 import utils.puzzle_solver_output_structure as output_structure
 
 
@@ -298,6 +300,36 @@ class TestPuzzleSolverOutputStructure(unittest.TestCase):
             )
             self.assertTrue(incremental_dir.is_dir())
             self.assertEqual(
+                output_structure.incremental_matching_dir(output_dir),
+                output_dir / "incremental_matching",
+            )
+            self.assertEqual(
+                output_structure.incremental_matching_manifest_path(output_dir),
+                output_dir / "incremental_matching" / "manifest.json",
+            )
+            self.assertEqual(
+                output_structure.incremental_matching_viewer_path(output_dir),
+                output_dir / "incremental_matching" / "index.html",
+            )
+            self.assertEqual(
+                output_structure.incremental_matching_step_matching_visualization_path(
+                    output_dir, 2
+                ),
+                incremental_dir / "matching_visualization.png",
+            )
+            self.assertEqual(
+                output_structure.incremental_matching_step_pose_forest_visualization_path(
+                    output_dir, 2
+                ),
+                incremental_dir / "pose_forest.png",
+            )
+            self.assertEqual(
+                output_structure.incremental_matching_step_change_visualization_path(
+                    output_dir, 2
+                ),
+                incremental_dir / "change_visualization.png",
+            )
+            self.assertEqual(
                 output_structure.incremental_matching_puzzle_visualization_path(
                     output_dir, 2, 4
                 ),
@@ -318,6 +350,57 @@ class TestPuzzleSolverOutputStructure(unittest.TestCase):
                 output_structure.puzzle_piece_dir(output_dir, -1)
             with self.assertRaises(AssertionError):
                 output_structure.pairwise_matching_dir(output_dir, 1, 1)
+
+
+class TestIncrementalMatchingDebugViewer(unittest.TestCase):
+    def test_write_debug_viewer_writes_manifest_and_embedded_html(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output_dir = Path(tmp_dir)
+            manifest = incremental_matching_debug.build_manifest(
+                2,
+                [
+                    {
+                        "step": 1,
+                        "accepted": {
+                            "source_piece": 0,
+                            "target_piece": 1,
+                            "match_score": 4,
+                        },
+                        "skipped_candidate_count": 0,
+                        "skipped_candidates": [],
+                        "pose_forest_edge": [1, 0],
+                        "transform": {
+                            "translation": [1.0, 0.0],
+                            "rotation_degrees": 0.0,
+                        },
+                        "source_component_before": [0],
+                        "target_component_before": [1],
+                        "merged_component": [0, 1],
+                        "unmatched_pieces": [],
+                        "assets": {
+                            "matching_visualization": "0001/matching_visualization.png",
+                            "pose_forest": "0001/pose_forest.png",
+                            "change_visualization": "0001/change_visualization.png",
+                        },
+                    }
+                ],
+            )
+
+            incremental_matching_debug.write_debug_viewer(output_dir, manifest)
+
+            manifest_path = output_structure.incremental_matching_manifest_path(
+                output_dir
+            )
+            viewer_path = output_structure.incremental_matching_viewer_path(output_dir)
+            self.assertTrue(manifest_path.is_file())
+            self.assertTrue(viewer_path.is_file())
+            self.assertEqual(json.loads(manifest_path.read_text()), manifest)
+            viewer_html = viewer_path.read_text()
+            self.assertIn("manifest-data", viewer_html)
+            self.assertIn("[hidden]", viewer_html)
+            self.assertIn("display: none !important", viewer_html)
+            self.assertIn("0001/matching_visualization.png", viewer_html)
+            self.assertNotIn("fetch(", viewer_html)
 
 
 if __name__ == "__main__":

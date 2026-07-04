@@ -92,9 +92,45 @@ def profiling_data_path(output_dir: Path) -> Path:
 
 
 def incremental_matching_output_dir(output_dir: Path, step: int) -> Path:
-    result = output_dir / "incremental_matching" / f"{step:04}"
+    result = incremental_matching_dir(output_dir) / f"{step:04}"
     result.mkdir(parents=True, exist_ok=True)
     return result
+
+
+def incremental_matching_dir(output_dir: Path) -> Path:
+    result = output_dir / "incremental_matching"
+    result.mkdir(parents=True, exist_ok=True)
+    return result
+
+
+def incremental_matching_manifest_path(output_dir: Path) -> Path:
+    return incremental_matching_dir(output_dir) / "manifest.json"
+
+
+def incremental_matching_viewer_path(output_dir: Path) -> Path:
+    return incremental_matching_dir(output_dir) / "index.html"
+
+
+def incremental_matching_step_matching_visualization_path(
+    output_dir: Path, step: int
+) -> Path:
+    return (
+        incremental_matching_output_dir(output_dir, step) / "matching_visualization.png"
+    )
+
+
+def incremental_matching_step_pose_forest_visualization_path(
+    output_dir: Path, step: int
+) -> Path:
+    return incremental_matching_output_dir(output_dir, step) / "pose_forest.png"
+
+
+def incremental_matching_step_change_visualization_path(
+    output_dir: Path, step: int
+) -> Path:
+    return (
+        incremental_matching_output_dir(output_dir, step) / "change_visualization.png"
+    )
 
 
 def incremental_matching_puzzle_visualization_path(

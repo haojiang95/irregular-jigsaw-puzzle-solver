@@ -29,6 +29,10 @@ bash scripts/build_project.sh
 python scripts/run_puzzle_solver.py -i demo_dataset -o output_dir -c configs/puzzle_solver_config.yaml
 ```
 
+When `outputs.incremental_matching_intermediate_results` is enabled, open
+`output_dir/incremental_matching/index.html` in a browser to step through the
+incremental matching debug timeline.
+
 ### Testing
 
 ```shell

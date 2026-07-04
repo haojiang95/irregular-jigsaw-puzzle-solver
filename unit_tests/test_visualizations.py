@@ -1,4 +1,6 @@
+import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 import networkx as nx
@@ -104,6 +106,61 @@ class TestVisualizations(unittest.TestCase):
         self.assertEqual(result.shape, (2, 5, 3))
         self.assertTrue(np.any(np.all(result == np.array([10, 20, 30]), axis=2)))
         self.assertTrue(np.any(np.all(result == np.array([40, 50, 60]), axis=2)))
+
+    def test_visualize_matching_result_forest_excludes_singletons_by_default(self):
+        puzzle_pieces = [
+            PuzzlePiece(
+                np.zeros((2, 2, 3), dtype=np.uint8),
+                np.ones((2, 2), dtype=bool),
+                (0, 0),
+            )
+            for _ in range(3)
+        ]
+        pose_forest = nx.DiGraph()
+        pose_forest.add_nodes_from([0, 1, 2])
+        pose_forest.add_edge(0, 1, relative_pose=EuclideanTransform(translation=(3, 0)))
+        colors = visualizations.stable_puzzle_piece_colors(3)
+
+        result = visualizations.visualize_matching_result_forest(
+            puzzle_pieces, pose_forest
+        )
+
+        self.assertEqual(result.dtype, np.uint8)
+        self.assertTrue(np.any(np.all(result == np.array(colors[0]), axis=2)))
+        self.assertTrue(np.any(np.all(result == np.array(colors[1]), axis=2)))
+        self.assertFalse(np.any(np.all(result == np.array(colors[2]), axis=2)))
+
+    def test_pose_forest_edge_styles_highlights_selected_edge(self):
+        pose_forest = nx.DiGraph()
+        pose_forest.add_nodes_from([0, 1, 2])
+        pose_forest.add_edge(0, 1)
+        pose_forest.add_edge(1, 2)
+
+        edge_colors, edge_widths = visualizations.pose_forest_edge_styles(
+            pose_forest, highlighted_edge=(1, 2)
+        )
+
+        self.assertEqual(
+            edge_colors,
+            [
+                visualizations.POSE_FOREST_EDGE_COLOR,
+                visualizations.POSE_FOREST_HIGHLIGHT_EDGE_COLOR,
+            ],
+        )
+        self.assertEqual(edge_widths, [1.4, 3.0])
+
+    def test_save_pose_forest_visualization_writes_file(self):
+        pose_forest = nx.DiGraph()
+        pose_forest.add_nodes_from([0, 1])
+        pose_forest.add_edge(0, 1, relative_pose=EuclideanTransform(translation=(3, 0)))
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output_path = Path(tmp_dir) / "pose_forest.png"
+            visualizations.save_pose_forest_visualization(
+                pose_forest, output_path, highlighted_edge=(0, 1)
+            )
+
+            self.assertTrue(output_path.is_file())
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ from tqdm import tqdm
 import logging
 import cv2
 import visualizations
+import utils.incremental_matching_debug as incremental_matching_debug
 import utils.puzzle_solver_output_structure as output_structure
 from pathlib import Path
 from data_structures.contour import Contour
@@ -23,7 +24,7 @@ from algorithms.pairwise_matching import (
 import utils.geometry
 import numpy as np
 import networkx as nx
-import matplotlib.pyplot as plt
+import matplotlib
 from utils.profiling_tools import profile
 from algorithms.incremental_matching import IncrementalMatching
 
@@ -38,10 +39,10 @@ class PuzzleSolver:
         self._output_configs = configs["outputs"]
         self._verbose = verbose
         if verbose:
-            plt.set_loglevel("info")
+            matplotlib.set_loglevel("info")
         else:
             logger.setLevel(logging.WARNING)
-            plt.set_loglevel("warning")
+            matplotlib.set_loglevel("warning")
 
     @profile()
     def run_puzzle_piece_segmentation(
@@ -357,10 +358,9 @@ class PuzzleSolver:
     @profile()
     def run_contour_graph_visualization(self, graph: nx.Graph) -> None:
         if self._output_configs["contour_graph"]:
-            plt.clf()
-            nx.draw(graph, with_labels=True, font_weight="bold")
-            plt.savefig(
-                output_structure.contour_graph_visualization_path(self._output_dir)
+            visualizations.save_graph_visualization(
+                graph,
+                output_structure.contour_graph_visualization_path(self._output_dir),
             )
 
     @profile()
@@ -374,9 +374,9 @@ class PuzzleSolver:
                 max(nx.weakly_connected_components(pose_forest), key=len)
             ).copy()
         )
-        plt.clf()
-        nx.draw_planar(pose_tree, with_labels=True, font_weight="bold")
-        plt.savefig(output_structure.pose_tree_visualization_path(self._output_dir))
+        visualizations.save_pose_forest_visualization(
+            pose_tree, output_structure.pose_tree_visualization_path(self._output_dir)
+        )
         cv2.imwrite(
             output_structure.matching_result_visualization_path(self._output_dir),
             visualizations.visualize_matching_results(puzzle_pieces, pose_tree),
@@ -393,33 +393,77 @@ class PuzzleSolver:
         incremental_matching = IncrementalMatching(
             contour_graph, len(puzzle_pieces), contours
         )
-        step = 0
-        while not incremental_matching.step():
-            step += 1
+        debug_steps = []
+        incremental_matching_dir = (
+            output_structure.incremental_matching_dir(self._output_dir)
+            if self._output_configs["incremental_matching_intermediate_results"]
+            else None
+        )
+        while True:
+            pose_forest_before = nx.DiGraph(incremental_matching.pose_forest().copy())
+            step_result = incremental_matching.step_with_result()
+            if step_result is None:
+                break
+
             if not self._output_configs["incremental_matching_intermediate_results"]:
                 continue
+            assert incremental_matching_dir is not None
             pose_forest = incremental_matching.pose_forest()
-            for component_index, component in enumerate(
-                nx.weakly_connected_components(pose_forest)
-            ):
-                if len(component) <= 1:
-                    continue
-                pose_tree = nx.DiGraph(pose_forest.subgraph(component).copy())
-                cv2.imwrite(
-                    str(
-                        output_structure.incremental_matching_puzzle_visualization_path(
-                            self._output_dir, step, component_index + 1
-                        )
-                    ),
-                    visualizations.visualize_matching_results(puzzle_pieces, pose_tree),
+            matching_visualization_path = (
+                output_structure.incremental_matching_step_matching_visualization_path(
+                    self._output_dir, step_result.step
                 )
-                plt.clf()
-                nx.draw_planar(pose_tree, with_labels=True, font_weight="bold")
-                plt.savefig(
-                    output_structure.incremental_matching_pose_tree_visualization_path(
-                        self._output_dir, step, component_index + 1
-                    )
+            )
+            pose_forest_visualization_path = output_structure.incremental_matching_step_pose_forest_visualization_path(
+                self._output_dir, step_result.step
+            )
+            change_visualization_path = (
+                output_structure.incremental_matching_step_change_visualization_path(
+                    self._output_dir, step_result.step
                 )
+            )
+
+            cv2.imwrite(
+                str(matching_visualization_path),
+                visualizations.visualize_matching_result_forest(
+                    puzzle_pieces, pose_forest
+                ),
+            )
+            visualizations.save_pose_forest_visualization(
+                pose_forest,
+                pose_forest_visualization_path,
+                highlighted_edge=step_result.pose_forest_edge,
+            )
+            cv2.imwrite(
+                str(change_visualization_path),
+                visualizations.visualize_incremental_matching_change(
+                    puzzle_pieces,
+                    pose_forest_before,
+                    pose_forest,
+                    step_result.source_component_before,
+                    step_result.target_component_before,
+                    step_result.merged_component,
+                ),
+            )
+            debug_steps.append(
+                incremental_matching_debug.step_result_to_manifest_entry(
+                    step_result,
+                    {
+                        "matching_visualization": matching_visualization_path,
+                        "pose_forest": pose_forest_visualization_path,
+                        "change_visualization": change_visualization_path,
+                    },
+                    incremental_matching_dir,
+                )
+            )
+
+        if self._output_configs["incremental_matching_intermediate_results"]:
+            incremental_matching_debug.write_debug_viewer(
+                self._output_dir,
+                incremental_matching_debug.build_manifest(
+                    len(puzzle_pieces), debug_steps
+                ),
+            )
 
         pose_forest = incremental_matching.pose_forest()
         logger.info(

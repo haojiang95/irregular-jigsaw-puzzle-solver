@@ -325,6 +325,104 @@ class TestIncrementalMatching(unittest.TestCase):
         self.assertEqual(pose_forest.number_of_edges(), 2)
         self.assertTrue(nx.is_tree(pose_forest.to_undirected()))
 
+    def test_incremental_matching_step_with_result_records_skipped_candidates(self):
+        contours = [
+            Contour(np.array([[0, index], [1, index]], dtype=int), index)
+            for index in range(4)
+        ]
+        contour_graph = nx.Graph()
+        contour_graph.add_edge(
+            0,
+            1,
+            matching_info=self._matching_results(
+                source_contour_index=0,
+                target_contour_index=1,
+                num_matches=5,
+                translation=(1, 0),
+            ),
+        )
+        contour_graph.add_edge(
+            1,
+            2,
+            matching_info=self._matching_results(
+                source_contour_index=1,
+                target_contour_index=2,
+                num_matches=4,
+                translation=(2, 0),
+            ),
+        )
+        contour_graph.add_edge(
+            0,
+            2,
+            matching_info=self._matching_results(
+                source_contour_index=0,
+                target_contour_index=2,
+                num_matches=3,
+                translation=(3, 0),
+            ),
+        )
+        contour_graph.add_edge(
+            2,
+            3,
+            matching_info=self._matching_results(
+                source_contour_index=2,
+                target_contour_index=3,
+                num_matches=2,
+                translation=(4, 0),
+            ),
+        )
+        matching = IncrementalMatching(contour_graph, 4, contours)
+
+        first_result = matching.step_with_result()
+        second_result = matching.step_with_result()
+        third_result = matching.step_with_result()
+
+        self.assertIsNotNone(first_result)
+        self.assertIsNotNone(second_result)
+        self.assertIsNotNone(third_result)
+        self.assertEqual(first_result.step, 1)
+        self.assertEqual(first_result.accepted_candidate.match_score, 10)
+        self.assertEqual(third_result.step, 3)
+        self.assertEqual(third_result.accepted_candidate.source_puzzle_piece_id, 2)
+        self.assertEqual(third_result.accepted_candidate.target_puzzle_piece_id, 3)
+        self.assertEqual(third_result.accepted_candidate.match_score, 4)
+        self.assertEqual(len(third_result.skipped_candidates), 1)
+        self.assertEqual(third_result.skipped_candidates[0].source_puzzle_piece_id, 0)
+        self.assertEqual(third_result.skipped_candidates[0].target_puzzle_piece_id, 2)
+        self.assertEqual(third_result.skipped_candidates[0].match_score, 6)
+        self.assertEqual(third_result.components_before, ((0, 1, 2), (3,)))
+        self.assertEqual(third_result.source_component_before, (0, 1, 2))
+        self.assertEqual(third_result.target_component_before, (3,))
+        self.assertEqual(third_result.merged_component, (0, 1, 2, 3))
+        self.assertEqual(third_result.unmatched_pieces, ())
+        self.assertEqual(third_result.pose_forest_edge, (3, 2))
+        np.testing.assert_allclose(
+            third_result.transform.translation,
+            np.array([4.0, 0.0]),
+        )
+        self.assertIsNone(matching.step_with_result())
+
+    def test_incremental_matching_step_preserves_boolean_contract(self):
+        contours = [
+            Contour(np.array([[0, 0], [1, 0]], dtype=int), 0),
+            Contour(np.array([[0, 1], [1, 1]], dtype=int), 1),
+        ]
+        contour_graph = nx.Graph()
+        contour_graph.add_edge(
+            0,
+            1,
+            matching_info=self._matching_results(
+                source_contour_index=0,
+                target_contour_index=1,
+                num_matches=2,
+                translation=(1, 0),
+            ),
+        )
+        matching = IncrementalMatching(contour_graph, 2, contours)
+
+        self.assertFalse(matching.step())
+        self.assertTrue(matching.step())
+
     @staticmethod
     def _matching_results(
         source_contour_index: int,
