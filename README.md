@@ -29,6 +29,12 @@ bash scripts/build_project.sh
 python scripts/run_puzzle_solver.py -i demo_dataset -o output_dir -c configs/puzzle_solver_config.yaml
 ```
 
+### Testing
+
+```shell
+MPLCONFIGDIR=/private/tmp/mplconfig ./.venv/bin/python -m unittest discover -s unit_tests
+```
+
 ### Custom Datasets
 
 To run the application with your own datasets, scan the puzzle pieces with the lid of your scanner open and use a ppi
@@ -40,4 +46,4 @@ close to 300. You can scan them into multiple images. Then, scan a background im
 * This application doesn't work well on regular jigsaw puzzles because the puzzle pieces are too similar to each other.
 * This application cannot handle ambiguous puzzles; each piece must have only one correct match.
 * This application doesn't scale well. It tries to match every pair of puzzle pieces and takes O(N^2) time to solve a
-  puzzle with N pieces. 
+  puzzle with N pieces.

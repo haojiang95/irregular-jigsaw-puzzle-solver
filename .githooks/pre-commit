@@ -1,0 +1,15 @@
+#!/usr/bin/env sh
+set -eu
+
+HOOK_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+REPO_ROOT=$(CDPATH= cd -- "$HOOK_DIR/.." && pwd)
+cd "$REPO_ROOT"
+
+PYTHON_BIN="${PYTHON_BIN:-./.venv/bin/python}"
+if [ ! -x "$PYTHON_BIN" ]; then
+    echo "Python executable not found: $PYTHON_BIN" >&2
+    echo "Set PYTHON_BIN or create the local .venv first." >&2
+    exit 1
+fi
+
+exec "$PYTHON_BIN" scripts/run_affected_unit_tests.py
